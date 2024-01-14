@@ -1,13 +1,21 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const userRoutes = require("./routes/UserRoutes");
+const multer = require("multer");
 const app = express();
 const dotenv = require("dotenv");
+const userRoutes = require("./routes/UserRoutes");
+const bodyParser = require("body-parser");
+
 dotenv.config();
 app.use(cors());
 
 main().catch((err) => console.error(err));
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 async function main() {
   try {
@@ -21,9 +29,7 @@ async function main() {
   }
 }
 
-app.use(express.json());
-
-app.use("/users", userRoutes.router);
+app.use("/users", upload.single("file"), userRoutes.router);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

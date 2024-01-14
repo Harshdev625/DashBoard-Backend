@@ -19,13 +19,17 @@ const {
   addSocialLink,
   updateSocialLink,
   removeSocialLink,
-  getSocialLinks,
   addHeadlineAndDescription,
+  uploadProfilePicture,
+  uploadBackgroundPicture,
 } = require("../controllers/userController");
-const { createUser, loginUser,logoutUser } = require("../controllers/authController");
-const router = express.Router();
+const {
+  createUser,
+  loginUser,
+  logoutUser,
+} = require("../controllers/authController");
 
-// Define routes
+const router = express.Router();
 
 router
   .post("/", createUser)
@@ -49,7 +53,16 @@ router
   .post("/:id/socialLinks", authenticateUser, addSocialLink)
   .patch("/:id/socialLinks/:linkId", authenticateUser, updateSocialLink)
   .delete("/:id/socialLinks/:linkId", authenticateUser, removeSocialLink)
-  .get("/:id/socialLinks", authenticateUser, getSocialLinks)
-  .patch("/:id/headline-description",authenticateUser,addHeadlineAndDescription);
- 
- exports.router = router;
+  .patch("/:id/upload-profile-picture", authenticateUser, uploadProfilePicture)
+  .patch(
+    "/:id/headline-description",
+    authenticateUser,
+    addHeadlineAndDescription
+  )
+  .patch(
+    "/:id/upload-background-picture",
+    authenticateUser,
+    uploadBackgroundPicture
+  );
+
+exports.router = router;

@@ -4,7 +4,19 @@ const {
   encryptField,
   generateRandomIV,
 } = require("../utils/cryptoUtils");
+const axios = require("axios");
+const cheerio = require("cheerio");
+const cloudinary = require("cloudinary").v2;
+const streamifier = require("streamifier");
+const fs = require("fs").promises;
+const path = require("path");
+const { v4: uuidv4 } = require("uuid");
 
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 const updateAndDecryptField = async (id, field, newValue, ivField) => {
   try {
     const user = await User.findById(id);
@@ -23,6 +35,70 @@ const updateAndDecryptField = async (id, field, newValue, ivField) => {
   }
 };
 
+exports.uploadProfilePicture = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const file = req.file;
+
+    const uniqueFilename = `${uuidv4()}.${file.originalname.split(".").pop()}`;
+
+    const uploadsDirectory = path.join(__dirname, "..", "uploads");
+    await fs.mkdir(uploadsDirectory, { recursive: true });
+
+    const filePath = path.join(uploadsDirectory, uniqueFilename);
+
+    await fs.writeFile(filePath, file.buffer);
+
+    const result = await cloudinary.uploader.upload(filePath, {
+      resource_type: "auto",
+    });
+
+    await fs.unlink(filePath);
+
+    await User.findByIdAndUpdate(userId, { profilePicture: result.secure_url });
+
+    const updatedUser = await User.findById(userId);
+
+    res.status(200).json(updatedUser.profilePicture);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+exports.uploadBackgroundPicture = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const file = req.file;
+
+    const uniqueFilename = `${uuidv4()}.${file.originalname.split(".").pop()}`;
+
+    const uploadsDirectory = path.join(__dirname, "..", "uploads");
+    await fs.mkdir(uploadsDirectory, { recursive: true });
+
+    const filePath = path.join(uploadsDirectory, uniqueFilename);
+
+    await fs.writeFile(filePath, file.buffer);
+
+    const result = await cloudinary.uploader.upload(filePath, {
+      resource_type: "auto",
+    });
+
+    await fs.unlink(filePath);
+
+    await User.findByIdAndUpdate(userId, {
+      profileBackgroundPicture: result.secure_url,
+    });
+
+    const updatedUser = await User.findById(userId);
+
+    res.status(200).json(updatedUser.profileBackgroundPicture);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -32,17 +108,16 @@ exports.getUserById = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Extract sensitive fields for internal use
     const {
       password,
       passwordIv,
       dobIv,
       descriptionIv,
       headlineIv,
+      socialLinks,
       ...internalFields
     } = user.toObject();
 
-    // Decrypt specific fields for internal use
     internalFields.dateOfBirth = decryptField(
       internalFields.dateOfBirth,
       user.dobIv
@@ -60,11 +135,18 @@ exports.getUserById = async (req, res) => {
       );
     }
 
-    // Create the final data to be sent in the response (excluding sensitive fields)
-    const finalData = {
-      ...internalFields /* Add other non-sensitive fields here */,
-    };
+    const encryptedSocialLinks = socialLinks.map((socialLink) => ({
+      _id: socialLink._id,
+      name: socialLink.name,
+      link: decryptField(socialLink.link, socialLink.iv),
+      iv: socialLink.iv,
+      faviconUrl: socialLink.faviconUrl,
+    }));
 
+    const finalData = {
+      ...internalFields,
+      socialLinks: encryptedSocialLinks,
+    };
     res.status(200).json(finalData);
   } catch (error) {
     console.error(error);
@@ -72,7 +154,6 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-// Update a user by ID
 exports.updateUser = async (req, res) => {
   const { id } = req.params;
   const updatedData = req.body;
@@ -102,7 +183,6 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// Delete a user by ID
 exports.deleteUser = async (req, res) => {
   const { id } = req.params;
   try {
@@ -115,8 +195,6 @@ exports.deleteUser = async (req, res) => {
     res.status(400).json(error);
   }
 };
-
-// Add a new skill to the user's profile
 
 exports.addSkill = async (req, res) => {
   const { id } = req.params;
@@ -143,7 +221,6 @@ exports.addSkill = async (req, res) => {
   }
 };
 
-// Remove a skill from the user's profile
 exports.removeSkill = async (req, res) => {
   const { id, skillId } = req.params;
 
@@ -164,7 +241,6 @@ exports.removeSkill = async (req, res) => {
   }
 };
 
-// Update a skill in the user's profile
 exports.updateSkill = async (req, res) => {
   const { id, skillId } = req.params;
   const { name, level } = req.body;
@@ -283,7 +359,6 @@ exports.updateProject = async (req, res) => {
   }
 };
 
-// Add a new education entry to the user's profile
 exports.addEducation = async (req, res) => {
   const { id } = req.params;
   const { school, degree, fieldOfStudy, startDate, endDate, grade } = req.body;
@@ -313,7 +388,6 @@ exports.addEducation = async (req, res) => {
   }
 };
 
-// Remove an education entry from the user's profile
 exports.removeEducation = async (req, res) => {
   const { id, educationId } = req.params;
 
@@ -334,7 +408,6 @@ exports.removeEducation = async (req, res) => {
   }
 };
 
-// Update an education entry in the user's profile
 exports.updateEducation = async (req, res) => {
   const { id, educationId } = req.params;
   const { school, degree, fieldOfStudy, startDate, endDate, grade } = req.body;
@@ -368,8 +441,6 @@ exports.updateEducation = async (req, res) => {
   }
 };
 
-
-// Add a new company to the user's profile
 exports.addCompany = async (req, res) => {
   const { id } = req.params;
   const { name, location, employment, startDate, endDate, position } = req.body;
@@ -399,7 +470,6 @@ exports.addCompany = async (req, res) => {
   }
 };
 
-// Remove a company from the user's profile
 exports.removeCompany = async (req, res) => {
   const { id, companyId } = req.params;
 
@@ -422,7 +492,6 @@ exports.removeCompany = async (req, res) => {
   }
 };
 
-// Update a company in the user's profile
 exports.updateCompany = async (req, res) => {
   const { id, companyId } = req.params;
   const { name, location, employment, startDate, endDate, position } = req.body;
@@ -481,38 +550,47 @@ exports.addSocialLink = async (req, res) => {
       return res.status(400).json({ error: "Name and link are required" });
     }
 
-    // Fetch the favicon from the link
     const faviconUrl = await fetchFavicon(link);
 
-    // Encrypt the link and store it with IV
-    const iv = generateRandomIV(); // Generate IV for the link
+    const iv = generateRandomIV();
     const encryptedLink = encryptField(link, iv);
 
     user.socialLinks.push({ name, link: encryptedLink, iv, faviconUrl });
     await user.save();
 
-    console.log("Link added:", { name, link: encryptedLink, iv, faviconUrl });
-    res.status(201).json(user.socialLinks);
+    const decryptedSocialLinks = user.socialLinks.map((socialLink) => ({
+      _id: socialLink._id,
+      name: socialLink.name,
+      link: decryptField(socialLink.link, socialLink.iv),
+      iv: socialLink.iv,
+      faviconUrl: socialLink.faviconUrl,
+    }));
+
+    res.status(201).json(decryptedSocialLinks);
   } catch (error) {
     console.error("Error adding social link:", error);
     res.status(500).json(error);
   }
 };
 
-// Function to fetch favicon from a given link
 const fetchFavicon = async (link) => {
   try {
     const response = await axios.get(link);
     const $ = cheerio.load(response.data);
     const faviconUrl = $("link[rel='icon']").attr("href");
+
+    if (!faviconUrl) {
+      console.log("Favicon not found");
+      return null;
+    }
+
     return faviconUrl;
   } catch (error) {
     console.error("Error fetching favicon:", error);
-    return null; // Return null if favicon is not found or there's an error
+    return null;
   }
 };
 
-// Update a social link for the user
 exports.updateSocialLink = async (req, res) => {
   const { id, linkId } = req.params;
   const { name, link } = req.body;
@@ -532,7 +610,6 @@ exports.updateSocialLink = async (req, res) => {
 
     if (name) socialLink.name = name;
     if (link) {
-      // Generate a new IV for the updated link
       const iv = generateRandomIV();
       const encryptedLink = encryptField(link, iv);
 
@@ -542,14 +619,20 @@ exports.updateSocialLink = async (req, res) => {
 
     await user.save();
 
-    res.status(200).json(user.socialLinks);
+    const decryptedSocialLinks = user.socialLinks.map((socialLink) => ({
+      _id: socialLink._id,
+      name: socialLink.name,
+      link: decryptField(socialLink.link, socialLink.iv),
+      iv: socialLink.iv,
+      faviconUrl: socialLink.faviconUrl,
+    }));
+    res.status(200).json(decryptedSocialLinks);
   } catch (error) {
     console.error("Error updating social link:", error);
     res.status(500).json(error);
   }
 };
 
-// Remove a social link from the user
 exports.removeSocialLink = async (req, res) => {
   const { id, linkId } = req.params;
 
@@ -570,36 +653,16 @@ exports.removeSocialLink = async (req, res) => {
 
     user.socialLinks.splice(socialLinkIndex, 1);
     await user.save();
-
-    res.status(200).json(user.socialLinks);
+    const decryptedSocialLinks = user.socialLinks.map((socialLink) => ({
+      _id: socialLink._id,
+      name: socialLink.name,
+      link: decryptField(socialLink.link, socialLink.iv),
+      iv: socialLink.iv,
+      faviconUrl: socialLink.faviconUrl,
+    }));
+    res.status(200).json(decryptedSocialLinks);
   } catch (error) {
     console.error(error);
-    res.status(500).json(error);
-  }
-};
-
-// Get the social links in their original format
-exports.getSocialLinks = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const user = await User.findById(id);
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Decrypt the links before sending the response
-    const decryptedLinks = user.socialLinks.map((socialLink) => {
-      const { name, link, iv } = socialLink;
-      const decryptedLink = decryptField(link, iv);
-      return { name, link: decryptedLink };
-    });
-
-    console.log("Decrypted links:", decryptedLinks);
-    res.status(200).json(decryptedLinks);
-  } catch (error) {
-    console.error("Error getting social links:", error);
     res.status(500).json(error);
   }
 };

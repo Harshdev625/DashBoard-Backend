@@ -43,11 +43,6 @@ const userSchema = new mongoose.Schema({
       ref: "User",
     },
   ],
-  academicInfo: {
-    branch: String,
-    roll: String,
-    semester: String,
-  },
   projects: [
     {
       title: String,

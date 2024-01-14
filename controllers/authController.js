@@ -46,7 +46,7 @@ exports.createUser = async (req, res) => {
   const passwordIv = generateRandomIV();
   const dobIv = generateRandomIV();
   const headlineIv = generateRandomIV();
-  const descriptionIv =  generateRandomIV();
+  const descriptionIv = generateRandomIV();
   newUser.password = encryptData(newUser.password, passwordIv);
   newUser.passwordIv = passwordIv;
   newUser.dateOfBirth = encryptData(newUser.dateOfBirth, dobIv);
